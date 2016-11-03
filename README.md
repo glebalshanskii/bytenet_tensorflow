@@ -21,6 +21,16 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 * Framework for Training and Decoding
 * Sub Batch Normalization
 
+##Structure
+
+The structure of the model will be in two parts:
+
+- One ByteNet model is initialized as a source network
+
+- A Second ByteNet model is initalized as a target network
+
+This is done this way so that ByteNet is modular. This means that you can use a convolution encoder and a RNN decoder. Parts should be interchangeable. 
+
 
 ##Other Notes
 
@@ -31,4 +41,4 @@ List of contributions that would help me out while I work on other parts of the 
 * Masking Causal Convolutions
 * Sub Batch Normalization
 
-I apologize for all the comments but it helps me make progress, debug, and understand what is going on specifically. 
+I apologize for all the comments but it helps me make progress, debug, and understand what is going on specifically. I do many pushes as I experiment heavily with different combinations of models.
