@@ -89,12 +89,12 @@ def mu_law_decode(output, quantization_channels):
         return tf.sign(signal) * magnitude
 
 
-def create_bytenet_dilation_layer(input_batch, layer_index, dilation, variables):
+def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all_variables):
     '''Creates a single causal dilated convolution layer that mimics figure 3 left in bytenet paper
 
     note that in the source network, there is no masking on causal convolution. However, on the decoder, there is indeed causal convolutions 
     '''
-    variables = self.variables['dilated_stack'][layer_index]
+    variables = all_variables['dilated_stack'][layer_index]
     weights_filter = variables['filter']
     weights_gate = variables['gate']
 
@@ -102,7 +102,7 @@ def create_bytenet_dilation_layer(input_batch, layer_index, dilation, variables)
     activated = tf.nn.relu(input_batch)
 
     weights_dense = variables['dense']
-    first_flat_conv = tf.nn.conv1d(out, weights_dense, stride=1, padding="SAME", name="dense")
+    first_flat_conv = tf.nn.conv1d(input_batch, weights_dense, stride=1, padding="SAME", name="dense")
     #sub bn here
     activated_first_flat_conv = tf.nn.relu(first_flat_conv)
 
@@ -118,3 +118,66 @@ def create_bytenet_dilation_layer(input_batch, layer_index, dilation, variables)
         activated_causal_conv_filter, weights_skip, stride=1, padding="SAME", name="skip")
 
     return input_batch + final_block_output
+
+def create_wavenet_dilation_layer(self, input_batch, layer_index, dilation, variables):
+    '''Creates a single causal dilated convolution layer.
+
+    Nick you may have to modify this to produce the same blocks that bytenet had
+
+    The layer contains a gated filter that connects to dense output
+    and to a skip connection:
+
+           |-> [gate]   -|        |-> 1x1 conv -> skip output
+           |             |-> (*) -|
+    input -|-> [filter] -|        |-> 1x1 conv -|
+           |                                    |-> (+) -> dense output
+           |------------------------------------|
+
+    Where `[gate]` and `[filter]` are causal convolutions with a
+    non-linear activation at the output.
+    '''
+    variables = self.variables['dilated_stack'][layer_index]
+
+    weights_filter = variables['filter']
+    weights_gate = variables['gate']
+
+    conv_filter = causal_conv(input_batch, weights_filter, dilation)
+    conv_gate = causal_conv(input_batch, weights_gate, dilation)
+
+    if self.use_biases:
+        filter_bias = variables['filter_bias']
+        gate_bias = variables['gate_bias']
+        conv_filter = tf.add(conv_filter, filter_bias)
+        conv_gate = tf.add(conv_gate, gate_bias)
+
+    out = tf.tanh(conv_filter) * tf.sigmoid(conv_gate)
+
+    # The 1x1 conv to produce the residual output
+    weights_dense = variables['dense']
+    transformed = tf.nn.conv1d(
+        out, weights_dense, stride=1, padding="SAME", name="dense")
+
+    # The 1x1 conv to produce the skip output
+    weights_skip = variables['skip']
+    skip_contribution = tf.nn.conv1d(
+        out, weights_skip, stride=1, padding="SAME", name="skip")
+
+    if self.use_biases:
+        dense_bias = variables['dense_bias']
+        skip_bias = variables['skip_bias']
+        transformed = transformed + dense_bias
+        skip_contribution = skip_contribution + skip_bias
+
+    if self.histograms:
+        layer = 'layer{}'.format(layer_index)
+        tf.histogram_summary(layer + '_filter', weights_filter)
+        tf.histogram_summary(layer + '_gate', weights_gate)
+        tf.histogram_summary(layer + '_dense', weights_dense)
+        tf.histogram_summary(layer + '_skip', weights_skip)
+        if self.use_biases:
+            tf.histogram_summary(layer + '_biases_filter', filter_bias)
+            tf.histogram_summary(layer + '_biases_gate', gate_bias)
+            tf.histogram_summary(layer + '_biases_dense', dense_bias)
+            tf.histogram_summary(layer + '_biases_skip', skip_bias)
+
+    return skip_contribution, input_batch + transformed

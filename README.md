@@ -44,6 +44,11 @@ output = target_network.create_target_network(source_output, conditional_inputs)
 
 This is done this way so that ByteNet is modular. This means that you can use a convolution encoder and a RNN decoder. Parts should be interchangeable. 
 
+##Results
+
+With the source network, it does perform pretty well for language tasks, but not as well as a standard vanilla LSTM 3 layer stack. The bytenet source network certainly consumes your gpus. I running it on three oc Titan X's and all three at 100% gpu usage most of the time.
+
+In terms of actual wall-time, the 1024 dilation (25 layers repeating 1,2,4,8,16 rates) is slightly faster than 1024 unit LSTM. Not exactly comparing them appropriately because the source network has way more parameters, and there are far more computations being done. However, given the fact that the wall time is almost the same due to parrallelization, I feel the source network has promise.
 
 ##Other Notes
 
@@ -53,5 +58,6 @@ List of contributions that would help me out while I work on other parts of the 
 
 * Masking Causal Convolutions
 * Sub Batch Normalization
+* Multiple Integration Advanced Block Network (fig 3 right)
 
 I apologize for all the comments but it helps me make progress, debug, and understand what is going on specifically. I do many pushes as I experiment heavily with different combinations of models.

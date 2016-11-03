@@ -1,7 +1,7 @@
 import tensorflow as tf
 
-from wavenet_ops import causal_conv, mu_law_encode
-import wavenet_ops
+from bytenet_ops import causal_conv, mu_law_encode
+import bytenet_ops
 
 
 def create_variable(name, shape):
@@ -28,17 +28,19 @@ class ByteNetModel(object):
         residual_channels = 16  # Not specified in the paper.
         dilation_channels = 32  # Not specified in the paper.
         skip_channels = 16      # Not specified in the paper.
-        net = WaveNetModel(batch_size, dilations, filter_width,
-                           residual_channels, dilation_channels,
-                           skip_channels)
-        loss = net.loss(input_batch)
+
+        source_network = bytenet_model.ByteNetModel(args)
+        source_output = source_network.create_source_network(inputs)
+
+        target_network = bytenet_model.ByteNetModel(args) 
+        output = target_network.create_target_network(source_output, conditional_inputs) #this has not been implemented
 
 
-        in bytenet paper, they have 25 residual blocks with five sets of 5 rates:
+        in bytenet paper, they have 25 residual blocks with five sets of five rates:
 
-        1, 2, 4, 8, 16
+        [1, 2, 4, 8, 16] * 5
 
-        In the wavenet paper, it appeared that they had rates that were far larger -- up to 512 in rates. 
+        In the wavenet paper, it appeared that they had rates that were far larger -- up to 512 in rates. May be something to test out down the road.
     '''
 
     def __init__(self,
@@ -46,16 +48,16 @@ class ByteNetModel(object):
                  dilations=[2**i for i in xrange(5)] * 5 , #investigate this configuration nick
                  filter_width=1, #bytenet calls for a filter width of 1
                  residual_channels=1024,
-                 dilation_channels = 1024, # i believe this would be d as they report in the paper
+                 dilation_channels = 1024, # I believe this would be d as they report in the paper
                  skip_channels = 1024,
                  quantization_channels=2**8,
                  use_biases=False,
-                 scalar_input=True, #nick I think this should be true
+                 scalar_input=True, # For text this should be marked as True (embedding input)
                  initial_filter_width=2, #nick this was 32 but reduced for memory purposes
                  histograms=False, 
                  initial_channels = 1,
                  FLAGS = None):
-        '''Initializes the WaveNet model.
+        '''Initializes the ByteNet model.
 
         Args:
             batch_size: How many audio files are supplied per batch
@@ -79,6 +81,7 @@ class ByteNetModel(object):
             initial_filter_width: The width of the initial filter of the
                 convolution applied to the scalar input. This is only relevant
                 if scalar_input=True.
+            initial_channels: Size of the inputs (normally embedding size)
             histograms: Whether to store histograms in the summary.
                 Default: False.
         '''
@@ -115,7 +118,7 @@ class ByteNetModel(object):
 
         var = dict()
 
-        with tf.variable_scope('wavenet'):
+        with tf.variable_scope('bytenet'):
             with tf.variable_scope('causal_layer'):
                 layer = dict()
                 if self.scalar_input:
@@ -172,18 +175,6 @@ class ByteNetModel(object):
 
                         var['dilated_stack'].append(current)
 
-            with tf.variable_scope('postprocessing'):
-                current = dict()
-
-                # current['postprocess1'] = create_variable(
-                #     'postprocess1',
-                #     [1, self.skip_channels, self.quantization_channels])
-                # if self.use_biases:
-                #     current['postprocess1_bias'] = create_bias_variable(
-                #         'postprocess1_bias',
-                #         [self.quantization_channels])
-                # var['postprocessing'] = current
-
         return var
 
     def _create_causal_layer(self, input_batch):
@@ -194,76 +185,6 @@ class ByteNetModel(object):
         with tf.name_scope('causal_layer'):
             weights_filter = self.variables['causal_layer']['filter']
             return causal_conv(input_batch, weights_filter, 1)
-
-
-
-
-
-
-
-
-    def _create_dilation_layer(self, input_batch, layer_index, dilation):
-        '''Creates a single causal dilated convolution layer.
-
-        Nick you may have to modify this to produce the same blocks that bytenet had
-
-        The layer contains a gated filter that connects to dense output
-        and to a skip connection:
-
-               |-> [gate]   -|        |-> 1x1 conv -> skip output
-               |             |-> (*) -|
-        input -|-> [filter] -|        |-> 1x1 conv -|
-               |                                    |-> (+) -> dense output
-               |------------------------------------|
-
-        Where `[gate]` and `[filter]` are causal convolutions with a
-        non-linear activation at the output.
-        '''
-        variables = self.variables['dilated_stack'][layer_index]
-
-        weights_filter = variables['filter']
-        weights_gate = variables['gate']
-
-        conv_filter = causal_conv(input_batch, weights_filter, dilation)
-        conv_gate = causal_conv(input_batch, weights_gate, dilation)
-
-        if self.use_biases:
-            filter_bias = variables['filter_bias']
-            gate_bias = variables['gate_bias']
-            conv_filter = tf.add(conv_filter, filter_bias)
-            conv_gate = tf.add(conv_gate, gate_bias)
-
-        out = tf.tanh(conv_filter) * tf.sigmoid(conv_gate)
-
-        # The 1x1 conv to produce the residual output
-        weights_dense = variables['dense']
-        transformed = tf.nn.conv1d(
-            out, weights_dense, stride=1, padding="SAME", name="dense")
-
-        # The 1x1 conv to produce the skip output
-        weights_skip = variables['skip']
-        skip_contribution = tf.nn.conv1d(
-            out, weights_skip, stride=1, padding="SAME", name="skip")
-
-        if self.use_biases:
-            dense_bias = variables['dense_bias']
-            skip_bias = variables['skip_bias']
-            transformed = transformed + dense_bias
-            skip_contribution = skip_contribution + skip_bias
-
-        if self.histograms:
-            layer = 'layer{}'.format(layer_index)
-            tf.histogram_summary(layer + '_filter', weights_filter)
-            tf.histogram_summary(layer + '_gate', weights_gate)
-            tf.histogram_summary(layer + '_dense', weights_dense)
-            tf.histogram_summary(layer + '_skip', weights_skip)
-            if self.use_biases:
-                tf.histogram_summary(layer + '_biases_filter', filter_bias)
-                tf.histogram_summary(layer + '_biases_gate', gate_bias)
-                tf.histogram_summary(layer + '_biases_dense', dense_bias)
-                tf.histogram_summary(layer + '_biases_skip', skip_bias)
-
-        return skip_contribution, input_batch + transformed
 
     def _generator_conv(self, input_batch, state_batch, weights):
         '''Perform convolution for a single convolutional processing step.'''
@@ -313,7 +234,6 @@ class ByteNetModel(object):
     def create_source_network(self, input_batch):
         '''creates a source network for bytenet -- does not use any causal masking layers or sub batch normalization'''
 
-
         current_layer = input_batch
 
         # Pre-process the input with a regular convolution
@@ -324,17 +244,17 @@ class ByteNetModel(object):
 
         current_layer = self._create_causal_layer(current_layer)
 
-        with tf.name_scope('dilated_stack'):
+        with tf.name_scope('source_dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
-                    current_layer = wavenet_ops.create_bytenet_dilation_layer(
-                        current_layer, layer_index, dilation)
+                    current_layer = bytenet_ops.create_simple_bytenet_dilation_layer(
+                        current_layer, layer_index, dilation, self.variables)
         return current_layer
                     # outputs.append(output) #these outputs are the summed skip connection
 
 
-    def _create_network(self, input_batch):
-        '''Construct the WaveNet network.'''
+    def create_wavenet_network(self, input_batch):
+        '''Construct the WaveNet network. -- another useful variation to test for source network'''
         outputs = []
         current_layer = input_batch
 
