@@ -23,4 +23,12 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 
 
 ##Other Notes
+
+*Contributions are welcome!*
+
+List of contributions that would help me out while I work on other parts of the network:
+
+* Masking Causal Convolutions
+* Sub Batch Normalization
+
 I apologize for all the comments but it helps me make progress, debug, and understand what is going on specifically. 
