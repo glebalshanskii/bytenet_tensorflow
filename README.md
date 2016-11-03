@@ -10,13 +10,17 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 
 ###Implemented:
 
-*Source Network
-*Residual Block (Fig 3 left)
-*Regular Batch Normalization 
+* Source Network
+* Residual Block (Fig 3 left)
+* Regular Batch Normalization 
 
 ###Need To Implement
 
-*Target Network
-*Masking Causal Convolutions
-*Framework for Training and Decoding
-*Sub Batch Normalization
+* Target Network
+* Masking Causal Convolutions
+* Framework for Training and Decoding
+* Sub Batch Normalization
+
+
+##Other Notes
+I apologize for all the comments but it helps me make progress, debug, and understand what is going on specifically. 
