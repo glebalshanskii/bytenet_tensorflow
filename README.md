@@ -13,6 +13,7 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 * Source Network
 * Residual Block (Fig 3 left)
 * Regular Batch Normalization 
+* Reduction Summing of Nodes (Not in paper but useful for attention in decoder)
 
 ###Need To Implement
 

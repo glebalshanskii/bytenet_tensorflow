@@ -2,6 +2,8 @@ import tensorflow as tf
 
 from bytenet_ops import causal_conv, mu_law_encode
 import bytenet_ops
+from additional_ops import batch_norm
+import additional_ops
 
 
 def create_variable(name, shape):
@@ -56,6 +58,8 @@ class ByteNetModel(object):
                  initial_filter_width=2, #nick this was 32 but reduced for memory purposes
                  histograms=False, 
                  initial_channels = 1,
+                 use_batch_norm = True,
+                 train = True,
                  FLAGS = None):
         '''Initializes the ByteNet model.
 
@@ -84,6 +88,7 @@ class ByteNetModel(object):
             initial_channels: Size of the inputs (normally embedding size)
             histograms: Whether to store histograms in the summary.
                 Default: False.
+            train: Boolean to whether model is training.
         '''
         self.batch_size = batch_size
         self.dilations = dilations
@@ -97,7 +102,10 @@ class ByteNetModel(object):
         self.initial_filter_width = initial_filter_width
         self.histograms = histograms
         self.initial_channels = initial_channels
+        self.use_batch_norm = use_batch_norm
+        self.train = train
         self.FLAGS = FLAGS
+
 
         self._log_var_stats()
         self.variables = self._create_variables()
@@ -159,6 +167,11 @@ class ByteNetModel(object):
                             [1,
                              self.dilation_channels,
                              self.skip_channels])
+                        if self.use_batch_norm:
+                            current['filter_batch_norm'] = batch_norm(name='filter_batch_norm{}'.format(i))
+                            current['gate_batch_norm'] = batch_norm(name='gate_batch_norm{}'.format(i))
+                            current['dense_batch_norm'] = batch_norm(name='dense_batch_norm{}'.format(i))
+                            current['skip_batch_norm'] = batch_norm(name='skip_batch_norm{}'.format(i))                           
                         if self.use_biases:
                             current['filter_bias'] = create_bias_variable(
                                 'filter_bias',
@@ -231,8 +244,11 @@ class ByteNetModel(object):
 
         return skip_contribution, input_batch + transformed
 
-    def create_source_network(self, input_batch):
-        '''creates a source network for bytenet -- does not use any causal masking layers or sub batch normalization'''
+    def create_source_network(self, input_batch, reduce_total_output_node_rate = 10):
+        '''creates a source network for bytenet -- does not use any causal masking layers or sub batch normalization
+
+        if reduce_total_output_node_rate == 1 normal output is returned as specified in paper. Otherwise, output nodes will be reduced by the factor noted. A factor of 10 will reduce the tensor by 10 times. Useful for attention mechanisms in decoder.
+        '''
 
         current_layer = input_batch
 
@@ -248,9 +264,12 @@ class ByteNetModel(object):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
                     current_layer = bytenet_ops.create_simple_bytenet_dilation_layer(
-                        current_layer, layer_index, dilation, self.variables)
-        return current_layer
-                    # outputs.append(output) #these outputs are the summed skip connection
+                        current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train)
+        
+        if reduce_total_output_node_rate == 1:
+            return current_layer
+        else:
+            return additional_ops.reduce_total_output_nodes(current_layer, reduce_total_output_node_rate)
 
 
     def create_wavenet_network(self, input_batch):
