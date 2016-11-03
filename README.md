@@ -26,8 +26,18 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 The structure of the model will be in two parts:
 
 - One ByteNet model is initialized as a source network
+- A Second ByteNet model is initialized as a target network
 
-- A Second ByteNet model is initalized as a target network
+To implement network:
+
+```python
+from bytenet import bytenet_model
+
+source_network = bytenet_model.ByteNetModel(args)
+source_output = source_network.create_source_network(inputs)
+
+target_network = bytenet_model.ByteNetModel(args) 
+output = target_network.create_target_network(source_output, conditional_inputs) #this has not been implemented
 
 This is done this way so that ByteNet is modular. This means that you can use a convolution encoder and a RNN decoder. Parts should be interchangeable. 
 

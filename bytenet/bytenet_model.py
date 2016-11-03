@@ -19,7 +19,7 @@ def create_bias_variable(name, shape):
     return tf.Variable(initializer(shape=shape), name)
 
 
-class WaveNetModel(object):
+class ByteNetModel(object):
     '''Implements the WaveNet network for generative audio.
 
     Usage (with the architecture as in the DeepMind paper):
@@ -310,7 +310,10 @@ class WaveNetModel(object):
 
         return skip_contribution, input_batch + transformed
 
-    def _create_bytenet_network(self, input_batch):
+    def create_source_network(self, input_batch):
+        '''creates a source network for bytenet -- does not use any causal masking layers or sub batch normalization'''
+
+
         current_layer = input_batch
 
         # Pre-process the input with a regular convolution
@@ -499,14 +502,6 @@ class WaveNetModel(object):
             return tf.reshape(last, [-1])
 
     
-    def run_network(self, input_batch, name='wavenet'):
-        '''will run wavenet network and return the outputs'''
-        with tf.name_scope(name):
-            raw_output = self._create_network(input_batch)
-            return raw_output
-
-
-
     def loss(self,
              input_batch,
              l2_regularization_strength=None,
