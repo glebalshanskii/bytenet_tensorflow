@@ -63,7 +63,7 @@ def reduce_total_output_nodes(input_tensor, reduction_rate=10):
 
 	if input_tensor_shape[1]%reduction_rate != 0:
 		raise ValueError('num of nodes', input_tensor_shape[1], 'must be divisible by reduction rate:', reduction_rate)
-
+	tf.logging.info('nodes are being reduced sum by a factor of '+str(reduction_rate))
 
 	num_final_nodes = int(input_tensor_shape[1]/reduction_rate)
 	input_tensor_split_list = tf.split(split_dim = 1, num_split = num_final_nodes, value =  input_tensor)

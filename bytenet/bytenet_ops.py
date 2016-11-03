@@ -1,6 +1,7 @@
 from __future__ import division
 
 import tensorflow as tf
+import convolution_ops
 
 
 def create_adam_optimizer(learning_rate, momentum):
@@ -23,7 +24,7 @@ optimizer_factory = {'adam': create_adam_optimizer,
                      'sgd': create_sgd_optimizer,
                      'rmsprop': create_rmsprop_optimizer}
 
-
+'''investigate this function to ensure that higher batch sizes are appropriate'''
 def time_to_batch(value, dilation, name=None):
     with tf.name_scope('time_to_batch'):
         shape = tf.shape(value)
@@ -65,30 +66,6 @@ def causal_conv(value, filter_, dilation, name='causal_conv'):
                           [-1, value_shape_list[1], -1])
         return result
 
-
-def mu_law_encode(audio, quantization_channels):
-    '''Quantizes waveform amplitudes.'''
-    with tf.name_scope('encode'):
-        mu = quantization_channels - 1
-        # Perform mu-law companding transformation (ITU-T, 1988).
-        magnitude = tf.log(1 + mu * tf.abs(audio)) / tf.log(1. + mu)
-        signal = tf.sign(audio) * magnitude
-        # Quantize signal to the specified number of levels.
-        return tf.cast((signal + 1) / 2 * mu + 0.5, tf.int32)
-
-
-def mu_law_decode(output, quantization_channels):
-    '''Recovers waveform from quantized values.'''
-    with tf.name_scope('decode'):
-        mu = quantization_channels - 1
-        # Map values back to [-1, 1].
-        casted = tf.cast(output, tf.float32)
-        signal = 2 * (casted / mu) - 1
-        # Perform inverse of mu-law transformation.
-        magnitude = (1 / mu) * ((1 + mu)**abs(signal) - 1)
-        return tf.sign(signal) * magnitude
-
-
 def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):
     '''Creates a single causal dilated convolution layer that mimics figure 3 left in bytenet paper
 
@@ -108,6 +85,11 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
     activated_first_flat_conv = tf.nn.relu(first_flat_conv)
     #calls for masked 1 x k here for decoder -- TODO later
     weights_filter = variables['filter']
+    causal_conv_filter = convolution_ops.dilated_conv1d(activated_first_flat_conv, 
+        weights = weights_filter, 
+        rate=dilation, 
+        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+
     causal_conv_filter = causal_conv(activated_first_flat_conv, weights_filter, dilation)
 
 

@@ -1,9 +1,10 @@
 import tensorflow as tf
 
-from bytenet_ops import causal_conv, mu_law_encode
+from audio_ops import mu_law_encode
 import bytenet_ops
 from additional_ops import batch_norm
 import additional_ops
+import convolution_ops
 
 
 def create_variable(name, shape):
@@ -88,6 +89,8 @@ class ByteNetModel(object):
             initial_channels: Size of the inputs (normally embedding size)
             histograms: Whether to store histograms in the summary.
                 Default: False.
+            use_batch_norm: Will use regular batch norm -- please ensure you only use this in 
+                the source network
             train: Boolean to whether model is training.
         '''
         self.batch_size = batch_size
@@ -116,6 +119,12 @@ class ByteNetModel(object):
         tf.logging.info('quantization channels are: '+str(self.quantization_channels))
         tf.logging.info('skip channels are: '+str(self.skip_channels))
         tf.logging.info('residual channels are: '+str(self.residual_channels))
+        if self.use_batch_norm:
+            tf.logging.warn('BATCH NORMALIZATION IS BEING USED -- be sure this is a source network')
+        if self.train:
+            tf.logging.warn('NETWORK IS SET TO TRAIN')
+        else:
+            tf.logging.warn('NETWORK IS SET FOR FORWARD PASS ONLY')
         print('dilation structure:', self.dilations)
 
 
@@ -152,11 +161,6 @@ class ByteNetModel(object):
                             [self.filter_width,
                              self.residual_channels,
                              self.dilation_channels])
-                        current['gate'] = create_variable(
-                            'gate',
-                            [self.filter_width,
-                             self.residual_channels,
-                             self.dilation_channels])
                         current['dense'] = create_variable(
                             'dense',
                             [1,
@@ -169,15 +173,11 @@ class ByteNetModel(object):
                              self.skip_channels])
                         if self.use_batch_norm:
                             current['filter_batch_norm'] = batch_norm(name='filter_batch_norm{}'.format(i))
-                            current['gate_batch_norm'] = batch_norm(name='gate_batch_norm{}'.format(i))
                             current['dense_batch_norm'] = batch_norm(name='dense_batch_norm{}'.format(i))
                             current['skip_batch_norm'] = batch_norm(name='skip_batch_norm{}'.format(i))                           
                         if self.use_biases:
                             current['filter_bias'] = create_bias_variable(
                                 'filter_bias',
-                                [self.dilation_channels])
-                            current['gate_bias'] = create_bias_variable(
-                                'gate_bias',
                                 [self.dilation_channels])
                             current['dense_bias'] = create_bias_variable(
                                 'dense_bias',
@@ -190,14 +190,14 @@ class ByteNetModel(object):
 
         return var
 
-    def _create_causal_layer(self, input_batch):
+    def _create_causal_layer(self, input_batch, name = None):
         '''Creates a single causal convolution layer.
 
         The layer can change the number of channels.
         '''
         with tf.name_scope('causal_layer'):
             weights_filter = self.variables['causal_layer']['filter']
-            return causal_conv(input_batch, weights_filter, 1)
+            return convolution_ops.dilated_conv1d(input_batch, weights_filter, 1, name = name)
 
     def _generator_conv(self, input_batch, state_batch, weights):
         '''Perform convolution for a single convolutional processing step.'''
@@ -248,8 +248,11 @@ class ByteNetModel(object):
         '''creates a source network for bytenet -- does not use any causal masking layers or sub batch normalization
 
         if reduce_total_output_node_rate == 1 normal output is returned as specified in paper. Otherwise, output nodes will be reduced by the factor noted. A factor of 10 will reduce the tensor by 10 times. Useful for attention mechanisms in decoder.
+
         '''
 
+        tf.logging.info('Creating ByteNet Source Network')
+        tf.logging.info('reduce total output node rate is '+str(reduce_total_output_node_rate) + ' a node rate of 1 means vanilla output (as reported in paper)')
         current_layer = input_batch
 
         # Pre-process the input with a regular convolution
@@ -257,8 +260,6 @@ class ByteNetModel(object):
             initial_channels = self.initial_channels
         else:
             initial_channels = self.quantization_channels
-
-        current_layer = self._create_causal_layer(current_layer)
 
         with tf.name_scope('source_dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
