@@ -66,6 +66,26 @@ def causal_conv(value, filter_, dilation, name='causal_conv'):
                           [-1, value_shape_list[1], -1])
         return result
 
+
+def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):
+    '''For experimenting this simple dilation layer is used to avoid 1x1 convolutions as called for in the paper. 
+    The point of the 1x1 convolutions is to reduce d by two. However, a cheaper implementation may be to avoid these 1x1 convolutions all together and just chain together simple dilation layers.
+    '''
+    variables = all_variables['dilated_stack'][layer_index]
+
+    if use_batch_norm:
+        first_flat_conv = variables['filter_batch_norm'](first_flat_conv, train = train)
+    activated_first_flat_conv = tf.nn.relu(first_flat_conv)
+    #calls for masked 1 x k here for decoder -- TODO later
+    weights_filter = variables['filter']
+    causal_conv_filter = convolution_ops.dilated_conv1d(activated_first_flat_conv, 
+        weights = weights_filter, 
+        rate=dilation, 
+        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+
+    return causal_conv_filter
+
+
 def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):
     '''Creates a single causal dilated convolution layer that mimics figure 3 left in bytenet paper
 
@@ -73,6 +93,7 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
     '''
     variables = all_variables['dilated_stack'][layer_index]
 
+    '''in this section we increase out channels to 1d -> 2d'''
     if use_batch_norm:
         input_batch = variables['dense_batch_norm'](input_batch, train = train)
     activated = tf.nn.relu(input_batch)
@@ -90,13 +111,11 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
         rate=dilation, 
         name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
 
-    causal_conv_filter = causal_conv(activated_first_flat_conv, weights_filter, dilation)
-
-
+    '''in this section we increase out channels to 1d -> 2d'''
     if use_batch_norm:
         causal_conv_filter = variables['skip_batch_norm'](causal_conv_filter, train = train)
     activated_causal_conv_filter = tf.nn.relu(causal_conv_filter)
-    weights_skip = variables['skip']
+    weights_skip = variables['skip'] 
     final_block_output = tf.nn.conv1d(
         activated_causal_conv_filter, weights_skip, stride=1, padding="SAME", name="skip")
 
