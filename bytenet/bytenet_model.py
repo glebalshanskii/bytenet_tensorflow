@@ -233,6 +233,21 @@ class ByteNetModel(object):
 
                         var['dilated_stack'].append(current)
 
+
+
+        with tf.variable_scope('postprocessing'):
+            current = dict()
+            current['postprocess1'] = create_variable(
+                'postprocess1',
+                [1, self.skip_channels, self.quantization_channels])
+
+            if self.use_biases:
+                current['postprocess1_bias'] = create_bias_variable(
+                    'postprocess1_bias',
+                    [self.quantization_channels])
+
+            var['postprocessing'] = current
+
         return var
 
     def _create_causal_layer(self, input_batch, name = None):
@@ -240,9 +255,11 @@ class ByteNetModel(object):
 
         The layer can change the number of channels.
         '''
+        tf.logging.info('creating plain causal layer with dilation of 1')
         with tf.name_scope('causal_layer'):
             weights_filter = self.variables['causal_layer']['filter']
-            return convolution_ops.dilated_conv1d(input_batch, weights_filter, 1, name = name)
+            return bytenet_ops.causal_conv(input_batch, weights_filter, 1)
+
 
     def _generator_conv(self, input_batch, state_batch, weights):
         '''Perform convolution for a single convolutional processing step.'''
@@ -331,6 +348,8 @@ class ByteNetModel(object):
         outputs = []
         current_layer = input_batch
 
+        current_layer = self._create_causal_layer(current_layer)
+
         if self.use_only_dilations:
             block_function = bytenet_ops.create_simple_dilation_layer
         else:
@@ -345,14 +364,23 @@ class ByteNetModel(object):
                     outputs.append(output) #these outputs are the summed skip connection
 
         with tf.name_scope('postprocessing'):
-
             '''We skip connections from the outputs of each layer.'''
+            tf.logging.info('summing residual outputs')
             residual_total = sum(outputs)
 
+            tf.logging.info('applying postprocessing 1x1 convolution')
+            postprocess_weights1 = self.variables['postprocessing']['postprocess1']   
+            transformed1 = tf.nn.relu(residual_total)
+            conv1 = tf.nn.conv1d(transformed1, postprocess_weights1, stride=1, padding="SAME")
+            if self.use_biases:
+                b1 = self.variables['postprocessing']['postprocess1_bias']
+                conv1 = tf.add(conv1, b1)
+
+
             if reduce_total_output_node_rate == 1:
-                return residual_total
+                return conv1
             else:
-                return additional_ops.reduce_total_output_nodes(residual_total, reduce_total_output_node_rate)
+                return additional_ops.reduce_total_output_nodes(conv1, reduce_total_output_node_rate)
 
     def _create_generator(self, input_batch):
         '''Construct an efficient incremental generator. -- this is only for producing outputs'''
