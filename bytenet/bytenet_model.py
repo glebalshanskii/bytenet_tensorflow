@@ -9,9 +9,12 @@ import convolution_ops
 
 def create_variable(name, shape):
     '''Create a convolution filter variable with the specified name and shape,
-    and initialize it using Xavier initialition.'''
+    and initialize it using Xavier initialition.
+
+    Use get_variable for now'''
     initializer = tf.contrib.layers.xavier_initializer_conv2d()
-    variable = tf.Variable(initializer(shape=shape), name=name)
+    variable = tf.get_variable(name = name, initializer = initializer(shape=shape))
+    # variable = tf.Variable(initializer(shape=shape), name=name)
     return variable
 
 
@@ -19,7 +22,8 @@ def create_bias_variable(name, shape):
     '''Create a bias variable with the specified name and shape and initialize
     it to zero.'''
     initializer = tf.constant_initializer(value=0.0, dtype=tf.float32)
-    return tf.Variable(initializer(shape=shape), name)
+    # return tf.Variable(initializer(shape=shape), name)
+    return tf.get_variable(name = name, initializer = initializer(shape=shape))
 
 
 class ByteNetModel(object):
