@@ -87,7 +87,7 @@ def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variabl
     #     weights = weights_filter, 
     #     rate=dilation, 
     #     name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
-    
+
     final_block_output = input_batch + causal_conv_filter
 
     if return_residual_output:
@@ -136,7 +136,7 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
 
     return input_batch + final_block_output
 
-def create_wavenet_dilation_layer(self, input_batch, layer_index, dilation, all_variables, use_biases, return_residual_output = True):
+def create_wavenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train, return_residual_output = True, use_biases = False):
     '''Creates a single causal dilated convolution layer.
 
     Nick you may have to modify this to produce the same blocks that bytenet had

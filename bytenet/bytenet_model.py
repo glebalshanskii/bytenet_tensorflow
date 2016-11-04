@@ -145,6 +145,8 @@ class ByteNetModel(object):
             tf.logging.warn('NETWORK IS SET FOR FORWARD PASS ONLY')
         if self.use_only_dilations:
             tf.logging.warn('NETWORK IS SET TO ONLY USE DILATIONS')
+        if self.use_wavenet_network:
+            tf.logging.warn('NETWORK IS SET TO USE WAVENET CONFIGURATION WITH RESIDUAL SUMMING')
         print('dilation structure:', self.dilations)
 
 
