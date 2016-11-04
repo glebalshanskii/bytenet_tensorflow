@@ -111,6 +111,7 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
         rate=dilation, 
         name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
 
+
     '''in this section we increase out channels to 1d -> 2d'''
     if use_batch_norm:
         causal_conv_filter = variables['skip_batch_norm'](causal_conv_filter, train = train)
