@@ -5,101 +5,44 @@ import numpy as np
 '''library with some functions adapted from https://github.com/tomlepaine/fast-wavenet/blob/master/wavenet/layers.py
 in attempt to make batch size larger than one for dilated convolution'''
 
+'''investigate this function to ensure that higher batch sizes are appropriate'''
+def time_to_batch(value, dilation, name=None):
+    with tf.name_scope('time_to_batch'):
+        shape = tf.shape(value)
+        shape_list = value.get_shape().as_list()
+        pad_elements = dilation - 1 - (shape_list[1] + dilation - 1) % dilation
+        padded = tf.pad(value, [[0, 0], [0, pad_elements], [0, 0]])
+        reshaped = tf.reshape(padded, [-1, dilation, shape_list[2]])
+        transposed = tf.transpose(reshaped, perm=[1, 0, 2])
+        return tf.reshape(transposed, [shape[0] * dilation, -1, shape_list[2]])
 
 
+def batch_to_time(value, dilation, name=None):
+    with tf.name_scope('batch_to_time'):
+        shape = tf.shape(value)
+        shape_list = value.get_shape().as_list()
+        prepared = tf.reshape(value, [dilation, -1, shape_list[2]])
+        transposed = tf.transpose(prepared, perm=[1, 0, 2])
+        return tf.reshape(transposed,
+                          [tf.div(shape[0], dilation), -1, shape_list[2]]) #unknown batch size
 
 
-
-def time_to_batch(inputs, rate):
-    '''If necessary zero-pads inputs and reshape by rate.
-    
-    Used to perform 1D dilated convolution.
-    
-    Args:
-      inputs: (tensor) 
-      rate: (int)
-    Outputs:
-      outputs: (tensor)
-      pad_left: (int)
-    '''
-
-    _, width, num_channels = inputs.get_shape().as_list()
-
-    width_pad = int(rate * np.ceil((width + rate) * 1.0 / rate))
-    pad_left = width_pad - width
-
-    perm = (1, 0, 2)
-    shape = (int(width_pad / rate), -1, num_channels) # missing dim: batch_size * rate
-    padded = tf.pad(inputs, [[0, 0], [pad_left, 0], [0, 0]])
-    transposed = tf.transpose(padded, perm)
-    reshaped = tf.reshape(transposed, shape)
-    outputs = tf.transpose(reshaped, perm)
-    return outputs
-
-def batch_to_time(inputs, rate, crop_left=0):
-    ''' Reshape to 1d signal, and remove excess zero-padding.
-    
-    Used to perform 1D dilated convolution.
-    
-    Args:
-      inputs: (tensor)
-      crop_left: (int)
-      rate: (int)
-    Ouputs:
-      outputs: (tensor)
-    '''
-    # print('inputs', inputs)
-    # print('rate', rate)
-    # print('crop left', crop_left) #i think this is the problem with larger filter size
-    shape = tf.shape(inputs)
-    batch_size = shape[0] / rate
-    width = shape[1]
-    
-    out_width = tf.to_int32(width * rate)
-    _, _, num_channels = inputs.get_shape().as_list()
-    
-    perm = (1, 0, 2)
-    new_shape = (out_width, -1, num_channels) # missing dim: batch_size
-    transposed = tf.transpose(inputs, perm)    
-    reshaped = tf.reshape(transposed, new_shape)
-    outputs = tf.transpose(reshaped, perm)
-    cropped = tf.slice(outputs, [0, crop_left, 0], [-1, -1, -1])
-    return cropped
-
-
-def dilated_conv1d(inputs,
-                   weights,
-                   rate=1,
-                   name=None):
-    '''
-	In this op, the dimensions of outputs should be exactly that of inputs
-
-    Args:
-      inputs: (tensor)
-      output_channels:
-      rate:
-      name:
-    Outputs:
-      outputs: (tensor)
-    '''
-    assert name
-    with tf.variable_scope(name):
-    	filter_width, _, out_channels = weights.get_shape().as_list()
-        _, width, _ = inputs.get_shape().as_list()
-        inputs_ = time_to_batch(inputs, rate=rate) #this is not padding correctly
-        outputs_ = tf.nn.conv1d(
-    		inputs, weights, stride=1, padding='VALID', data_format='NHWC')
-
-        _, conv_out_width, _ = outputs_.get_shape().as_list()
-
-        new_width = conv_out_width * rate
-        diff = new_width - width #+ filter_width #added filter_width for larger filters
-        outputs = batch_to_time(outputs_, rate=rate, crop_left=diff)
-
-        '''Add additional shape information.'''
-        tensor_shape = [tf.Dimension(None),
-                        tf.Dimension(width), #the crop left relies on this being the same width size
-                        tf.Dimension(out_channels)]
-        outputs.set_shape(tf.TensorShape(tensor_shape))
-
-    return outputs
+def causal_conv(value, filter_, dilation, name='causal_conv'):
+    with tf.name_scope(name):
+        # Pad beforehand to preserve causality.
+        value_shape_list = value.get_shape().as_list()
+        # filter_width = tf.shape(filter_)[0]
+        filter_width = filter_.get_shape().as_list()[0]
+        padding = [[0, 0], [(filter_width - 1) * dilation, 0], [0, 0]]
+        padded = tf.pad(value, padding)
+        if dilation > 1:
+            transformed = time_to_batch(padded, dilation)
+            conv = tf.nn.conv1d(transformed, filter_, stride=1, padding='SAME')
+            restored = batch_to_time(conv, dilation)
+        else:
+            restored = tf.nn.conv1d(padded, filter_, stride=1, padding='SAME')
+        # Remove excess elements at the end.
+        result = tf.slice(restored,
+                          [0, 0, 0],
+                          [-1, value_shape_list[1], -1])
+        return result

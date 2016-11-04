@@ -1,7 +1,7 @@
 import tensorflow as tf
 
-from audio_ops import mu_law_encode
 import bytenet_ops
+import dilation_layers
 from additional_ops import batch_norm
 import additional_ops
 import convolution_ops
@@ -63,7 +63,7 @@ class ByteNetModel(object):
                  residual_channels=1024, #residual and dilation channels should be similar
                  dilation_channels = 1024, # I believe this would be d as they report in the paper -- they state they used size 892
                  skip_channels = 1024,
-                 quantization_channels=2**8,
+                 quantization_channels=2**8, #if you were building a classifier you would set this number = num_classes
                  use_biases=True, #haven't seen much of an effect with these
                  scalar_input=True, # For text this should be marked as True (embedding input)
                  initial_filter_width=2, #deprecated -- but used for initial causal conv
@@ -258,7 +258,7 @@ class ByteNetModel(object):
         tf.logging.info('creating plain causal layer with dilation of 1')
         with tf.name_scope('causal_layer'):
             weights_filter = self.variables['causal_layer']['filter']
-            return bytenet_ops.causal_conv(input_batch, weights_filter, 1)
+            return convolution_ops.causal_conv(input_batch, weights_filter, 1)
 
 
     def _generator_conv(self, input_batch, state_batch, weights):
@@ -316,6 +316,7 @@ class ByteNetModel(object):
         tf.logging.info('Creating ByteNet Source Network')
         tf.logging.info('reduce total output node rate is '+str(reduce_total_output_node_rate) + ' a node rate of 1 means vanilla output (as reported in paper)')
         current_layer = input_batch
+        current_layer = self._create_causal_layer(current_layer)
 
         # Pre-process the input with a regular convolution
         if self.scalar_input:
@@ -324,21 +325,17 @@ class ByteNetModel(object):
             initial_channels = self.quantization_channels
 
         if self.use_only_dilations:
-            block_function = bytenet_ops.create_simple_dilation_layer
+            block_function = dilation_layers.create_simple_dilation_layer
         else:
-            block_function = bytenet_ops.create_simple_bytenet_dilation_layer
+            block_function = dilation_layers.create_simple_bytenet_dilation_layer
 
         with tf.name_scope('source_dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
                     current_layer = block_function(
                         current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train)
-        
-        if reduce_total_output_node_rate == 1:
-            return current_layer
-        else:
-            return additional_ops.reduce_total_output_nodes(current_layer, reduce_total_output_node_rate)
 
+        return self._postprocess_network(current_layer, reduce_total_output_node_rate)
 
     def create_wavenet_network(self, input_batch, reduce_total_output_node_rate = 1):
         '''Construct the WaveNet network. -- another useful variation to test for source network
@@ -347,13 +344,12 @@ class ByteNetModel(object):
         '''
         outputs = []
         current_layer = input_batch
-
         current_layer = self._create_causal_layer(current_layer)
 
         if self.use_only_dilations:
-            block_function = bytenet_ops.create_simple_dilation_layer
+            block_function = dilation_layers.create_simple_dilation_layer
         else:
-            block_function = bytenet_ops.create_wavenet_dilation_layer
+            block_function = dilation_layers.create_wavenet_dilation_layer
 
         # Add all defined dilation layers.
         with tf.name_scope('dilated_stack'):
@@ -362,25 +358,30 @@ class ByteNetModel(object):
                     output, current_layer = block_function(
                         current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train, return_residual_output = True, use_biases = self.use_biases)
                     outputs.append(output) #these outputs are the summed skip connection
-
-        with tf.name_scope('postprocessing'):
-            '''We skip connections from the outputs of each layer.'''
             tf.logging.info('summing residual outputs')
             residual_total = sum(outputs)
 
+        return self._postprocess_network(residual_total, reduce_total_output_node_rate)
+
+
+    def _postprocess_network(self, input_batch, reduce_total_output_node_rate):
+        '''post processes network after dilations are complete'''
+        with tf.name_scope('postprocessing'):
+            '''We skip connections from the outputs of each layer.'''
+
             tf.logging.info('applying postprocessing 1x1 convolution')
             postprocess_weights1 = self.variables['postprocessing']['postprocess1']   
-            transformed1 = tf.nn.relu(residual_total)
+            transformed1 = tf.nn.relu(input_batch)
             conv1 = tf.nn.conv1d(transformed1, postprocess_weights1, stride=1, padding="SAME")
             if self.use_biases:
                 b1 = self.variables['postprocessing']['postprocess1_bias']
                 conv1 = tf.add(conv1, b1)
 
-
             if reduce_total_output_node_rate == 1:
                 return conv1
             else:
                 return additional_ops.reduce_total_output_nodes(conv1, reduce_total_output_node_rate)
+
 
     def _create_generator(self, input_batch):
         '''Construct an efficient incremental generator. -- this is only for producing outputs'''
