@@ -17,6 +17,7 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 
 ###Need To Implement
 
+* Support for filter width greater than 2
 * Target Network
 * Masking Causal Convolutions
 * Framework for Training and Decoding

@@ -49,18 +49,19 @@ class ByteNetModel(object):
     def __init__(self,
                  batch_size,
                  dilations=[2**i for i in xrange(5)] * 5 , #investigate this configuration nick
-                 filter_width=1, #bytenet calls for a filter width of 1
+                 filter_width=2, #bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network -- currently only filter width of 2 is supported -- need to fix this
                  residual_channels=1024,
                  dilation_channels = 1024, # I believe this would be d as they report in the paper
                  skip_channels = 1024,
                  quantization_channels=2**8,
                  use_biases=False,
                  scalar_input=True, # For text this should be marked as True (embedding input)
-                 initial_filter_width=2, #nick this was 32 but reduced for memory purposes
+                 initial_filter_width=2, #deprecated -- but used for initial causal conv
                  histograms=False, 
                  initial_channels = 1,
                  use_batch_norm = True,
                  train = True,
+                 use_target_network = False,
                  FLAGS = None):
         '''Initializes the ByteNet model.
 
@@ -92,6 +93,7 @@ class ByteNetModel(object):
             use_batch_norm: Will use regular batch norm -- please ensure you only use this in 
                 the source network
             train: Boolean to whether model is training.
+            use_target_network: Transform network into that appropriate for target network
         '''
         self.batch_size = batch_size
         self.dilations = dilations
@@ -108,12 +110,19 @@ class ByteNetModel(object):
         self.use_batch_norm = use_batch_norm
         self.train = train
         self.FLAGS = FLAGS
+        self.use_target_network = use_target_network
 
 
         self._log_var_stats()
         self.variables = self._create_variables()
 
     def _log_var_stats(self):
+        if self.use_target_network:
+            tf.logging.info('Target Network is being used')
+            self.filter_width = 3
+            tf.logging.warn('CHANGING FILTER WIDTH TO 3 BECAUSE TARGET NETWORK IS USED')
+
+
         tf.logging.info('initial channels are: '+str(self.initial_channels))
         tf.logging.info('dilation channels are: '+str(self.dilation_channels))
         tf.logging.info('quantization channels are: '+str(self.quantization_channels))
@@ -163,12 +172,12 @@ class ByteNetModel(object):
                              self.dilation_channels])
                         current['dense'] = create_variable(
                             'dense',
-                            [1,
+                            [1, #purposely set to one as in wavenet and bytenet paper
                              self.dilation_channels,
                              self.residual_channels])
                         current['skip'] = create_variable(
                             'skip',
-                            [1,
+                            [1, #purposely set to one as in wavenet and bytenet paper
                              self.dilation_channels,
                              self.skip_channels])
                         if self.use_batch_norm:

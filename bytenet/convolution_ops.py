@@ -59,71 +59,18 @@ def batch_to_time(inputs, rate, crop_left=0):
     cropped = tf.slice(outputs, [0, crop_left, 0], [-1, -1, -1])
     return cropped
 
-def conv1d(inputs,
-           out_channels,
-           filter_width=2,
-           stride=1,
-           padding='VALID',
-           data_format='NHWC',
-           gain=np.sqrt(2),
-           activation=tf.nn.relu,
-           bias=False):
-    '''One dimension convolution helper function.
-    
-    Sets variables with good defaults.
-    
-    Args:
-      inputs:
-      out_channels:
-      filter_width:
-      stride:
-      paddding:
-      data_format:
-      gain:
-      activation:
-      bias:
-      
-    Outputs:
-      outputs:
-    '''
-    in_channels = inputs.get_shape().as_list()[-1]
-
-    stddev = gain / np.sqrt(filter_width**2 * in_channels)
-    w_init = tf.random_normal_initializer(stddev=stddev)
-
-    w = tf.get_variable(name='w',
-                        shape=(filter_width, in_channels, out_channels),
-                        initializer=w_init)
-
-    outputs = tf.nn.conv1d(
-    	inputs, w, stride=stride,padding=padding, data_format=data_format)
-
-    if bias:
-        b_init = tf.constant_initializer(0.0)
-        b = tf.get_variable(name='b',
-                            shape=(out_channels, ),
-                            initializer=b_init)
-
-        outputs = outputs + tf.expand_dims(tf.expand_dims(b, 0), 0)
-
-    return outputs
 
 def dilated_conv1d(inputs,
                    weights,
                    rate=1,
-                   name=None,
-                   gain=np.sqrt(2)):
+                   name=None):
     '''
     
     Args:
       inputs: (tensor)
       output_channels:
-      filter_width:
       rate:
-      padding:
       name:
-      gain: not using this right now due to xavier initialization
-      activation:
     Outputs:
       outputs: (tensor)
     '''
@@ -138,9 +85,10 @@ def dilated_conv1d(inputs,
         _, conv_out_width, _ = outputs_.get_shape().as_list()
         new_width = conv_out_width * rate
         diff = new_width - width
+        print('diff', diff)
         outputs = batch_to_time(outputs_, rate=rate, crop_left=diff)
 
-        # Add additional shape information.
+        '''Add additional shape information.'''
         tensor_shape = [tf.Dimension(None),
                         tf.Dimension(width),
                         tf.Dimension(out_channels)]
