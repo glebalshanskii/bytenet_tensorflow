@@ -2,8 +2,11 @@ from __future__ import division
 
 import tensorflow as tf
 import numpy as np
-'''library from https://github.com/tomlepaine/fast-wavenet/blob/master/wavenet/layers.py
+'''library with some functions adapted from https://github.com/tomlepaine/fast-wavenet/blob/master/wavenet/layers.py
 in attempt to make batch size larger than one for dilated convolution'''
+
+
+
 
 
 

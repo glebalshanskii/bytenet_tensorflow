@@ -67,7 +67,7 @@ def causal_conv(value, filter_, dilation, name='causal_conv'):
         return result
 
 
-def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):
+def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train, return_residual_output = False):
     '''For experimenting this simple dilation layer is used to avoid 1x1 convolutions as called for in the paper. 
     The point of the 1x1 convolutions is to reduce d by two. However, a cheaper implementation may be to avoid these 1x1 convolutions all together and just chain together simple dilation layers.
     '''
@@ -87,10 +87,13 @@ def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variabl
     #     weights = weights_filter, 
     #     rate=dilation, 
     #     name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+    
+    final_block_output = input_batch + causal_conv_filter
 
-
-
-    return input_batch + causal_conv_filter
+    if return_residual_output:
+        return final_block_output, final_block_output
+    else:
+        return final_block_output
 
 
 def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):
@@ -133,7 +136,7 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
 
     return input_batch + final_block_output
 
-def create_wavenet_dilation_layer(self, input_batch, layer_index, dilation, all_variables, use_biases):
+def create_wavenet_dilation_layer(self, input_batch, layer_index, dilation, all_variables, use_biases, return_residual_output = True):
     '''Creates a single causal dilated convolution layer.
 
     Nick you may have to modify this to produce the same blocks that bytenet had

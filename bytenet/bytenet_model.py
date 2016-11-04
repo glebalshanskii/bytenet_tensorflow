@@ -44,6 +44,8 @@ class ByteNetModel(object):
         [1, 2, 4, 8, 16] * 5
 
         In the wavenet paper, it appeared that they had rates that were far larger -- up to 512 in rates. May be something to test out down the road.
+
+        From experimenting it seems that batch norm on encoder has hurt. This may be due to the excessive padding that is being done
     '''
 
     def __init__(self,
@@ -62,6 +64,7 @@ class ByteNetModel(object):
                  use_batch_norm = True,
                  train = True,
                  use_target_network = False,
+                 use_wavenet_network = True,
                  use_only_dilations = True,
                  FLAGS = None):
         '''Initializes the ByteNet model.
@@ -97,6 +100,7 @@ class ByteNetModel(object):
             use_target_network: Transform network into that appropriate for target network
             use_only_dilations: No 1x1 conv filters will be used and only dilation filters will 
                 be used. This makes the network simpler, but is not what is used in the bytenet paper.
+            use_wavenet_network: Will build network like wavenet. May be useful for some  language tasks.
         '''
         self.batch_size = batch_size
         self.dilations = dilations
@@ -115,6 +119,7 @@ class ByteNetModel(object):
         self.FLAGS = FLAGS
         self.use_target_network = use_target_network
         self.use_only_dilations = use_only_dilations
+        self.use_wavenet_network = use_wavenet_network
 
 
         self._log_var_stats()
@@ -176,16 +181,23 @@ class ByteNetModel(object):
                             [self.filter_width,
                              self.residual_channels,
                              self.dilation_channels])
-                        current['dense'] = create_variable(
-                            'dense',
-                            [1, #purposely set to one as in wavenet and bytenet paper
-                             self.dilation_channels,
-                             self.residual_channels])
-                        current['skip'] = create_variable(
-                            'skip',
-                            [1, #purposely set to one as in wavenet and bytenet paper
-                             self.dilation_channels,
-                             self.skip_channels])
+                        if self.use_wavenet_network and not self.use_only_dilations:
+                            current['gate'] = create_variable(
+                                'gate',
+                                [self.filter_width,
+                                 self.residual_channels,
+                                 self.dilation_channels])
+                        if not self.use_only_dilations:
+                            current['dense'] = create_variable(
+                                'dense',
+                                [1, #purposely set to one as in wavenet and bytenet paper
+                                 self.dilation_channels,
+                                 self.residual_channels])
+                            current['skip'] = create_variable(
+                                'skip',
+                                [1, #purposely set to one as in wavenet and bytenet paper
+                                 self.dilation_channels,
+                                 self.skip_channels])
                         if self.use_batch_norm:
                             current['filter_batch_norm'] = batch_norm(name='filter_batch_norm{}'.format(i))
                             current['dense_batch_norm'] = batch_norm(name='dense_batch_norm{}'.format(i))
@@ -293,48 +305,36 @@ class ByteNetModel(object):
             return additional_ops.reduce_total_output_nodes(current_layer, reduce_total_output_node_rate)
 
 
-    def create_wavenet_network(self, input_batch):
-        '''Construct the WaveNet network. -- another useful variation to test for source network'''
+    def create_wavenet_network(self, input_batch, reduce_total_output_node_rate = 1):
+        '''Construct the WaveNet network. -- another useful variation to test for source network
+
+        I have found that this network does surprisingly better than the bytenet in language tasks. I believe this is due to the skip connections.
+        '''
         outputs = []
         current_layer = input_batch
 
-        # Pre-process the input with a regular convolution
-        if self.scalar_input:
-            initial_channels = self.initial_channels
+        if self.use_only_dilations:
+            block_function = bytenet_ops.create_simple_dilation_layer
         else:
-            initial_channels = self.quantization_channels
-
-        current_layer = self._create_causal_layer(current_layer)
+            block_function = bytenet_ops.create_wavenet_dilation_layer
 
         # Add all defined dilation layers.
         with tf.name_scope('dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
-                    output, current_layer = self._create_dilation_layer(
-                        current_layer, layer_index, dilation)
+                    output, current_layer = block_function(
+                        current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train, return_residual_output = True)
                     outputs.append(output) #these outputs are the summed skip connection
 
         with tf.name_scope('postprocessing'):
-            # Perform (+) -> ReLU -> 1x1 conv -> ReLU -> 1x1 conv to
-            # postprocess the output.
-            # w1 = self.variables['postprocessing']['postprocess1']
-            # if self.use_biases:
-            #     b1 = self.variables['postprocessing']['postprocess1_bias']
 
-            if self.histograms:
-                tf.histogram_summary('postprocess1_weights', w1)
-                if self.use_biases:
-                    tf.histogram_summary('postprocess1_biases', b1)
-
-            # We skip connections from the outputs of each layer, adding them
-            # all up here.
+            '''We skip connections from the outputs of each layer.'''
             residual_total = sum(outputs)
 
-
-            # transformed1 = tf.nn.relu(residual_total)
-            # conv1 = tf.nn.conv1d(transformed1, w1, stride=1, padding="SAME")
-
-        return residual_total
+            if reduce_total_output_node_rate == 1:
+                return residual_total
+            else:
+                return additional_ops.reduce_total_output_nodes(residual_total, reduce_total_output_node_rate)
 
     def _create_generator(self, input_batch):
         '''Construct an efficient incremental generator. -- this is only for producing outputs'''
