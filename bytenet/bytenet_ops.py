@@ -77,11 +77,18 @@ def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variabl
         input_batch = variables['filter_batch_norm'](input_batch, train = train)
     activated_input_batch = tf.nn.relu(input_batch)
     #calls for masked 1 x k here for decoder -- TODO later
+
     weights_filter = variables['filter']
-    causal_conv_filter = convolution_ops.dilated_conv1d(activated_input_batch, 
-        weights = weights_filter, 
-        rate=dilation, 
-        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+    causal_conv_filter =  causal_conv(activated_input_batch, 
+        weights_filter, 
+        dilation, 
+        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation))
+    # causal_conv_filter = convolution_ops.dilated_conv1d(activated_input_batch, 
+    #     weights = weights_filter, 
+    #     rate=dilation, 
+    #     name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+
+
 
     return input_batch + causal_conv_filter
 
@@ -106,10 +113,14 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
     activated_first_flat_conv = tf.nn.relu(first_flat_conv)
     #calls for masked 1 x k here for decoder -- TODO later
     weights_filter = variables['filter']
-    causal_conv_filter = convolution_ops.dilated_conv1d(activated_first_flat_conv, 
-        weights = weights_filter, 
-        rate=dilation, 
-        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
+    causal_conv_filter = causal_conv(activated_first_flat_conv, 
+        weights_filter, 
+        dilation, 
+        name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation))
+    # causal_conv_filter = convolution_ops.dilated_conv1d(activated_first_flat_conv, 
+    #     weights = weights_filter, 
+    #     rate=dilation, 
+    #     name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
 
 
     '''in this section we increase out channels to 1d -> 2d'''
