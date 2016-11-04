@@ -74,16 +74,16 @@ def create_simple_dilation_layer(input_batch, layer_index, dilation, all_variabl
     variables = all_variables['dilated_stack'][layer_index]
 
     if use_batch_norm:
-        first_flat_conv = variables['filter_batch_norm'](first_flat_conv, train = train)
-    activated_first_flat_conv = tf.nn.relu(first_flat_conv)
+        input_batch = variables['filter_batch_norm'](input_batch, train = train)
+    activated_input_batch = tf.nn.relu(input_batch)
     #calls for masked 1 x k here for decoder -- TODO later
     weights_filter = variables['filter']
-    causal_conv_filter = convolution_ops.dilated_conv1d(activated_first_flat_conv, 
+    causal_conv_filter = convolution_ops.dilated_conv1d(activated_input_batch, 
         weights = weights_filter, 
         rate=dilation, 
         name='dilated_filter_lyr{}_dilation{}'.format(layer_index, dilation)) 
 
-    return causal_conv_filter
+    return input_batch + causal_conv_filter
 
 
 def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train):

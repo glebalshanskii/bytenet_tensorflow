@@ -49,7 +49,7 @@ class ByteNetModel(object):
     def __init__(self,
                  batch_size,
                  dilations=[2**i for i in xrange(5)] * 5 , # bytenet configuration
-                 filter_width=5, # bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network
+                 filter_width=2, # bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network
                  residual_channels=1024,
                  dilation_channels = 1024, # I believe this would be d as they report in the paper -- they state they used size 892
                  skip_channels = 1024,
@@ -62,6 +62,7 @@ class ByteNetModel(object):
                  use_batch_norm = True,
                  train = True,
                  use_target_network = False,
+                 use_only_dilations = True,
                  FLAGS = None):
         '''Initializes the ByteNet model.
 
@@ -94,6 +95,8 @@ class ByteNetModel(object):
                 the source network
             train: Boolean to whether model is training.
             use_target_network: Transform network into that appropriate for target network
+            use_only_dilations: No 1x1 conv filters will be used and only dilation filters will 
+                be used. This makes the network simpler, but is not what is used in the bytenet paper.
         '''
         self.batch_size = batch_size
         self.dilations = dilations
@@ -111,6 +114,7 @@ class ByteNetModel(object):
         self.train = train
         self.FLAGS = FLAGS
         self.use_target_network = use_target_network
+        self.use_only_dilations = use_only_dilations
 
 
         self._log_var_stats()
@@ -134,6 +138,8 @@ class ByteNetModel(object):
             tf.logging.warn('NETWORK IS SET TO TRAIN')
         else:
             tf.logging.warn('NETWORK IS SET FOR FORWARD PASS ONLY')
+        if self.use_only_dilations:
+            tf.logging.warn('NETWORK IS SET TO ONLY USE DILATIONS')
         print('dilation structure:', self.dilations)
 
 
@@ -270,10 +276,15 @@ class ByteNetModel(object):
         else:
             initial_channels = self.quantization_channels
 
+        if self.use_only_dilations:
+            block_function = bytenet_ops.create_simple_dilation_layer
+        else:
+            block_function = bytenet_ops.create_simple_bytenet_dilation_layer
+
         with tf.name_scope('source_dilated_stack'):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
-                    current_layer = bytenet_ops.create_simple_bytenet_dilation_layer(
+                    current_layer = block_function(
                         current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train)
         
         if reduce_total_output_node_rate == 1:

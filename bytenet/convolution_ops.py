@@ -90,7 +90,7 @@ def dilated_conv1d(inputs,
         _, conv_out_width, _ = outputs_.get_shape().as_list()
 
         new_width = conv_out_width * rate
-        diff = new_width - width + filter_width #added filter_width for larger filters
+        diff = new_width - width #+ filter_width #added filter_width for larger filters
         outputs = batch_to_time(outputs_, rate=rate, crop_left=diff)
 
         '''Add additional shape information.'''
