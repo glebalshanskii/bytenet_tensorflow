@@ -14,13 +14,14 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 * Residual Block (Fig 3 left)
 * Regular Batch Normalization 
 * Reduction Summing of Nodes (Not in paper but useful for attention in decoder)
+* Option to just use dilations in network
+* Option to use wavenet's dilation architecture (proven useful for language models)
 * Use different filter widths for convolutional dilations
 
-###Need To Implement
+###Need To Implement -- Contributions Welcome
 
 * Target Network
-* Masking Causal Convolutions
-* Framework for Training and Decoding
+* Framework for Training and Decoding (probably pull code from tensorflow's seq2seq)
 * Sub Batch Normalization
 
 ##Structure

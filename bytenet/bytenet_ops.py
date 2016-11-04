@@ -136,7 +136,7 @@ def create_simple_bytenet_dilation_layer(input_batch, layer_index, dilation, all
 
     return input_batch + final_block_output
 
-def create_wavenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train, return_residual_output = True, use_biases = False):
+def create_wavenet_dilation_layer(input_batch, layer_index, dilation, all_variables, use_batch_norm, train, return_residual_output = True, use_biases = False, activation = tf.tanh):
     '''Creates a single causal dilated convolution layer.
 
     Nick you may have to modify this to produce the same blocks that bytenet had
@@ -167,7 +167,7 @@ def create_wavenet_dilation_layer(input_batch, layer_index, dilation, all_variab
         conv_filter = tf.add(conv_filter, filter_bias)
         conv_gate = tf.add(conv_gate, gate_bias)
 
-    out = tf.tanh(conv_filter) * tf.sigmoid(conv_gate)
+    out = activation(conv_filter) * tf.sigmoid(conv_gate)
 
     # The 1x1 conv to produce the residual output
     weights_dense = variables['dense']
