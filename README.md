@@ -14,10 +14,10 @@ In the bytenet folder you will find the model and its associated ops. Will be wo
 * Residual Block (Fig 3 left)
 * Regular Batch Normalization 
 * Reduction Summing of Nodes (Not in paper but useful for attention in decoder)
+* Use different filter widths for convolutional dilations
 
 ###Need To Implement
 
-* Support for filter width greater than 2
 * Target Network
 * Masking Causal Convolutions
 * Framework for Training and Decoding

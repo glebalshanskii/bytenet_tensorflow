@@ -48,10 +48,10 @@ class ByteNetModel(object):
 
     def __init__(self,
                  batch_size,
-                 dilations=[2**i for i in xrange(5)] * 5 , #investigate this configuration nick
-                 filter_width=2, #bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network -- currently only filter width of 2 is supported -- need to fix this
+                 dilations=[2**i for i in xrange(5)] * 5 , # bytenet configuration
+                 filter_width=5, # bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network
                  residual_channels=1024,
-                 dilation_channels = 1024, # I believe this would be d as they report in the paper
+                 dilation_channels = 1024, # I believe this would be d as they report in the paper -- they state they used size 892
                  skip_channels = 1024,
                  quantization_channels=2**8,
                  use_biases=False,
@@ -122,7 +122,7 @@ class ByteNetModel(object):
             self.filter_width = 3
             tf.logging.warn('CHANGING FILTER WIDTH TO 3 BECAUSE TARGET NETWORK IS USED')
 
-
+        tf.logging.info('filter width for dilation convolution is:' + str(self.filter_width))
         tf.logging.info('initial channels are: '+str(self.initial_channels))
         tf.logging.info('dilation channels are: '+str(self.dilation_channels))
         tf.logging.info('quantization channels are: '+str(self.quantization_channels))
