@@ -46,6 +46,14 @@ class ByteNetModel(object):
         In the wavenet paper, it appeared that they had rates that were far larger -- up to 512 in rates. May be something to test out down the road.
 
         From experimenting it seems that batch norm on encoder has hurt. This may be due to the excessive padding that is being done
+
+        In the wavenet paper, the formula for calculating the receptive field (how much the final causal conv filter can see) is #layers + filter_width - 1 when using vanilla causal convolutions
+
+        In the case where we have 25 layers with a filter width of 5 = receptive field of 30
+
+        By using dilations, we can exponentially increase receptive field. 
+
+        Receptive field = Sum([(layer_index x filter_width x dilation) for layer_index in layers])
     '''
 
     def __init__(self,
@@ -56,7 +64,7 @@ class ByteNetModel(object):
                  dilation_channels = 1024, # I believe this would be d as they report in the paper -- they state they used size 892
                  skip_channels = 1024,
                  quantization_channels=2**8,
-                 use_biases=False,
+                 use_biases=True, #haven't seen much of an effect with these
                  scalar_input=True, # For text this should be marked as True (embedding input)
                  initial_filter_width=2, #deprecated -- but used for initial causal conv
                  histograms=False, 
@@ -137,6 +145,8 @@ class ByteNetModel(object):
         tf.logging.info('quantization channels are: '+str(self.quantization_channels))
         tf.logging.info('skip channels are: '+str(self.skip_channels))
         tf.logging.info('residual channels are: '+str(self.residual_channels))
+        if self.use_biases:
+            tf.logging.info("Biases are set to be used")
         if self.use_batch_norm:
             tf.logging.warn('BATCH NORMALIZATION IS BEING USED -- be sure this is a source network')
         if self.train:
@@ -208,12 +218,18 @@ class ByteNetModel(object):
                             current['filter_bias'] = create_bias_variable(
                                 'filter_bias',
                                 [self.dilation_channels])
-                            current['dense_bias'] = create_bias_variable(
-                                'dense_bias',
-                                [self.residual_channels])
-                            current['skip_bias'] = create_bias_variable(
-                                'slip_bias',
-                                [self.skip_channels])
+                            if self.use_wavenet_network and not self.use_only_dilations:
+                                current['gate_bias'] = create_bias_variable(
+                                    'gate_bias',
+                                    [self.dilation_channels])
+
+                            if not self.use_only_dilations:
+                                current['dense_bias'] = create_bias_variable(
+                                    'dense_bias',
+                                    [self.residual_channels])
+                                current['skip_bias'] = create_bias_variable(
+                                    'slip_bias',
+                                    [self.skip_channels])
 
                         var['dilated_stack'].append(current)
 
@@ -325,7 +341,7 @@ class ByteNetModel(object):
             for layer_index, dilation in enumerate(self.dilations):
                 with tf.name_scope('layer{}'.format(layer_index)):
                     output, current_layer = block_function(
-                        current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train, return_residual_output = True)
+                        current_layer, layer_index, dilation, self.variables, self.use_batch_norm, self.train, return_residual_output = True, use_biases = self.use_biases)
                     outputs.append(output) #these outputs are the summed skip connection
 
         with tf.name_scope('postprocessing'):
