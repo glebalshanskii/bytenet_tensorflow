@@ -49,7 +49,7 @@ class ByteNetModel(object):
     def __init__(self,
                  batch_size,
                  dilations=[2**i for i in xrange(5)] * 5 , # bytenet configuration
-                 filter_width=2, # bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network
+                 filter_width=5, # bytenet calls for a filter width of 5 for dilated convolutions in source network, and filter width of 3 in target network
                  residual_channels=1024,
                  dilation_channels = 1024, # I believe this would be d as they report in the paper -- they state they used size 892
                  skip_channels = 1024,
